@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Dynamic Inspection Tool</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React and ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Icons (Lucide) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #000; overflow: hidden; }
+        .slide-enter { animation: slideIn 0.3s ease-out forwards; }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        /* Disable text selection for better swipe experience */
+        .no-select { user-select: none; -webkit-user-select: none; }
+    </style>
+</head>
+<body>
+
+<div id="root"></div>
+
+<script type="text/babel">
+
+    // --- DATA CONFIGURATION ---
+    // Updated extensions to .png to match your GitHub upload plan
+    const stepsData = [
+        {
+            id: 1,
+            description: "Inspect the pressure relief valve",
+            inputType: "passfail",
+            imageUrl: "Step 1.png"
+        },
+        {
+            id: 2,
+            description: "Do a pressure test on the pump to 30PSI",
+            inputType: "passfail",
+            imageUrl: "Step 2.png"
+        },
+        {
+            id: 3,
+            description: "Inspect the arrangement of gears",
+            inputType: "passfail",
+            imageUrl: "Step 3.png"
+        },
+        {
+            id: 4,
+            description: "Read the temperature after 10 minutes of runtime",
+            inputType: "numeric",
+            min: 60,
+            max: 66,
+            unit: "°C",
+            imageUrl: "Step 4.png"
+        },
+        {
+            id: 5,
+            description: "Measure the voltage at the gas valve",
+            inputType: "numeric",
+            min: 23,
+            max: 25,
+            unit: "V",
+            imageUrl: "Step 5.png"
+        }
+    ];
+
+    // --- COMPONENTS ---
+
+    // 1. Start Screen
+    function StartScreen({ onStart }) {
+        const [meta, setMeta] = React.useState({
+            employeeName: "",
+            date: new Date().toISOString().split('T')[0],
+            partNumber: ""
+        });
+
+        const handleSubmit = (e) => {
+            e.preventDefault();
+            if(meta.employeeName && meta.partNumber) {
+                onStart(meta);
+            } else {
+                alert("Please fill in all fields");
+            }
+        };
+
+        return (
+            <div className="min-h-screen flex items-center justify-center p-4 bg-gray-100">
+                <div className="max-w-md w-full bg-white p-8 rounded-xl shadow-lg slide-enter">
+                    <div className="text-center mb-6">
+                        <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i data-lucide="clipboard-list" className="w-8 h-8 text-blue-600"></i>
+                        </div>
+                        <h1 className="text-2xl font-bold text-gray-800">New Inspection</h1>
+                        <p className="text-gray-500">Enter details to begin</p>
+                    </div>
+                    
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Employee Name</label>
+                            <input 
+                                type="text" 
+                                required
+                                className="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                value={meta.employeeName}
+                                onChange={(e) => setMeta({...meta, employeeName: e.target.value})}
+                                placeholder="e.g. John Doe"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Date</label>
+                            <input 
+                                type="date" 
+                                required
+                                className="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                value={meta.date}
+                                onChange={(e) => setMeta({...meta, date: e.target.value})}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Equipment Part Number</label>
+                            <input 
+                                type="text" 
+                                required
+                                className="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                value={meta.partNumber}
+                                onChange={(e) => setMeta({...meta, partNumber: e.target.value})}
+                                placeholder="e.g. EQ-2024-X"
+                            />
+                        </div>
+                        <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 transition">
+                            Start Inspection
+                        </button>
+                    </form>
+                </div>
+            </div>
+        );
+    }
+
+    // 2. Dynamic Step Screen (Full Screen Redesign)
+    function StepScreen({ stepData, stepIndex, totalSteps, onNext, onBack }) {
+        const [value, setValue] = React.useState("");
+        const [failureNote, setFailureNote] = React.useState("");
+        const [error, setError] = React.useState("");
+        const [touchStart, setTouchStart] = React.useState(null);
+        const [touchEnd, setTouchEnd] = React.useState(null);
+
+        // Reset state when step changes
+        React.useEffect(() => {
+            setValue("");
+            setFailureNote("");
+            setError("");
+        }, [stepData]);
+
+        // Re-run icons when error appears
+        React.useEffect(() => {
+            if (window.lucide) window.lucide.createIcons();
+        }, [error]);
+
+        const validateAndProceed = () => {
+            if (stepData.inputType === "numeric") {
+                if (value === "") {
+                    setError("Please enter a value.");
+                    return;
+                }
+            } else if (stepData.inputType === "passfail") {
+                if (value === "") {
+                    setError("Please select Pass or Fail.");
+                    return;
+                }
+                if (value === "Fail" && failureNote.trim() === "") {
+                    setError("Please provide a note for the failure.");
+                    return;
+                }
+            }
+
+            let resultStatus = "Pass";
+            if (stepData.inputType === "passfail" && value === "Fail") resultStatus = "Fail";
+            if (stepData.inputType === "numeric") {
+                const num = parseFloat(value);
+                if (num < stepData.min || num > stepData.max) resultStatus = "Fail (Out of Range)";
+            }
+
+            onNext({
+                stepId: stepData.id,
+                description: stepData.description,
+                value: value,
+                status: resultStatus,
+                note: failureNote
+            });
+        };
+
+        // --- Swipe Handlers ---
+        const minSwipeDistance = 50; 
+
+        const onTouchStart = (e) => {
+            setTouchEnd(null);
+            setTouchStart(e.targetTouches[0].clientX);
+        };
+
+        const onTouchMove = (e) => {
+            setTouchEnd(e.targetTouches[0].clientX);
+        };
+
+        const onTouchEnd = () => {
+            if (!touchStart || !touchEnd) return;
+            const distance = touchStart - touchEnd;
+            const isLeftSwipe = distance > minSwipeDistance;
+            const isRightSwipe = distance < -minSwipeDistance;
+
+            if (isLeftSwipe) {
+                // Swipe Left -> Next
+                validateAndProceed();
+            } else if (isRightSwipe && stepIndex > 0) {
+                // Swipe Right -> Back
+                onBack();
+            }
+        };
+
+        return (
+            <div 
+                className="relative w-full h-screen bg-black overflow-hidden no-select"
+                onTouchStart={onTouchStart}
+                onTouchMove={onTouchMove}
+                onTouchEnd={onTouchEnd}
+            >
+                {/* Full Screen Image */}
+                <img 
+                    src={stepData.imageUrl} 
+                    alt={`Slide for step ${stepIndex + 1}`}
+                    className="absolute inset-0 w-full h-full object-contain z-0"
+                    onError={(e) => {e.target.style.display='none'; e.target.nextSibling.style.display='flex';}}
+                />
+                 <div className="hidden absolute inset-0 z-0 flex items-center justify-center text-gray-400 bg-gray-900">
+                    <div className="text-center">
+                        <i data-lucide="image-off" className="w-16 h-16 mx-auto mb-4"></i>
+                        <p className="text-xl">Image not found: {stepData.imageUrl}</p>
+                    </div>
+                </div>
+
+                {/* Navigation Arrows */}
+                {stepIndex > 0 && (
+                    <button onClick={onBack} className="absolute left-4 top-1/2 transform -translate-y-1/2 z-20 bg-black/50 text-white p-3 rounded-full hover:bg-black/70 transition">
+                        <i data-lucide="chevron-left" className="w-8 h-8"></i>
+                    </button>
+                )}
+                <button onClick={validateAndProceed} className="absolute right-4 top-1/2 transform -translate-y-1/2 z-20 bg-black/50 text-white p-3 rounded-full hover:bg-black/70 transition">
+                    <i data-lucide="chevron-right" className="w-8 h-8"></i>
+                </button>
+
+                {/* Bottom Controls Overlay */}
+                <div className="absolute bottom-0 left-0 right-0 z-10 p-6 bg-gradient-to-t from-black via-black/80 to-transparent flex justify-center">
+                    <div className="w-full max-w-2xl bg-white/95 backdrop-blur-sm p-6 rounded-2xl shadow-2xl slide-enter">
+                        
+                        <div className="flex justify-between items-center mb-4">
+                            <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">
+                                Step {stepIndex + 1} of {totalSteps}
+                            </span>
+                        </div>
+                        <h2 className="text-2xl font-bold text-gray-900 mb-6">{stepData.description}</h2>
+                        
+                        <div className="mb-2">
+                            {stepData.inputType === "passfail" && (
+                                <div className="space-y-4">
+                                    <div className="flex gap-4">
+                                        <button 
+                                            onClick={() => {setValue("Pass"); setError("");}}
+                                            className={`flex-1 py-4 rounded-xl font-bold border-2 transition text-lg ${value === "Pass" ? "bg-green-100 border-green-500 text-green-700 shadow-sm" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
+                                        >
+                                            PASS
+                                        </button>
+                                        <button 
+                                            onClick={() => {setValue("Fail"); setError("");}}
+                                            className={`flex-1 py-4 rounded-xl font-bold border-2 transition text-lg ${value === "Fail" ? "bg-red-100 border-red-500 text-red-700 shadow-sm" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
+                                        >
+                                            FAIL
+                                        </button>
+                                    </div>
+                                    {value === "Fail" && (
+                                        <div className="slide-enter bg-red-50 p-3 rounded-xl border border-red-100">
+                                            <label className="block text-sm font-medium text-red-800 mb-1">Failure Note (Required)</label>
+                                            <textarea 
+                                                className="w-full p-3 border border-red-300 rounded-lg focus:ring-red-500 focus:border-red-500 text-base"
+                                                rows="2"
+                                                placeholder="Describe the defect..."
+                                                value={failureNote}
+                                                onChange={(e) => setFailureNote(e.target.value)}
+                                            ></textarea>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {stepData.inputType === "numeric" && (
+                                <div>
+                                    <div className="flex items-center justify-center mb-4">
+                                        <input 
+                                            type="number" 
+                                            className="block w-48 p-3 border-2 border-gray-300 rounded-xl text-4xl font-mono font-bold text-center focus:ring-blue-500 focus:border-blue-500"
+                                            placeholder="0.00"
+                                            value={value}
+                                            onChange={(e) => {setValue(e.target.value); setError("");}}
+                                        />
+                                        <span className="ml-4 text-3xl text-gray-500 font-bold">{stepData.unit}</span>
+                                    </div>
+                                    <div className="flex justify-center gap-4 text-sm text-gray-600">
+                                        <span className="bg-gray-100 px-3 py-1 rounded-full border">Min: <span className="font-mono font-bold">{stepData.min}</span></span>
+                                        <span className="bg-gray-100 px-3 py-1 rounded-full border">Max: <span className="font-mono font-bold">{stepData.max}</span></span>
+                                    </div>
+                                </div>
+                            )}
+                            
+                            {error && (
+                                <div className="flex items-center justify-center mt-4 text-red-600 bg-red-50 p-2 rounded-lg mx-auto w-fit px-4">
+                                    <i data-lucide="alert-circle" className="w-5 h-5 mr-2"></i>
+                                    <span className="font-medium">{error}</span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // 3. Report Screen
+    function ReportScreen({ meta, results, onRestart }) {
+        const handlePrint = () => {
+            window.print();
+        };
+
+        // Render icons on mount
+        React.useEffect(() => {
+            if (window.lucide) window.lucide.createIcons();
+        }, []);
+
+        const failedItems = results.filter(r => r.status.includes("Fail"));
+
+        return (
+            <div className="min-h-screen bg-gray-100 p-4 overflow-y-auto">
+                <div className="max-w-3xl mx-auto bg-white p-8 rounded-xl shadow-lg slide-enter print:shadow-none print:mt-0 print:w-full print:max-w-none">
+                    <div className="flex justify-between items-start mb-8 border-b pb-6">
+                        <div>
+                            <h1 className="text-3xl font-bold text-gray-900">Inspection Report</h1>
+                            <p className="text-gray-500 text-sm mt-1">Generated automatically • {new Date().toLocaleString()}</p>
+                        </div>
+                        <div className="text-right">
+                            <div className={`inline-block px-4 py-1 rounded-full text-sm font-bold border ${failedItems.length === 0 ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+                                {failedItems.length === 0 ? "PASSED" : "ATTENTION REQUIRED"}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Metadata Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                        <div>
+                            <span className="block text-xs uppercase text-gray-500 tracking-wider font-semibold">Employee</span>
+                            <span className="font-semibold text-gray-900 text-lg">{meta.employeeName}</span>
+                        </div>
+                        <div>
+                            <span className="block text-xs uppercase text-gray-500 tracking-wider font-semibold">Date</span>
+                            <span className="font-semibold text-gray-900 text-lg">{meta.date}</span>
+                        </div>
+                        <div>
+                            <span className="block text-xs uppercase text-gray-500 tracking-wider font-semibold">Equipment P/N</span>
+                            <span className="font-semibold text-gray-900 text-lg">{meta.partNumber}</span>
+                        </div>
+                    </div>
+
+                    {/* Results Table */}
+                    <div className="overflow-hidden rounded-lg border border-gray-200 mb-8">
+                        <table className="w-full text-left border-collapse">
+                            <thead className="bg-gray-50">
+                                <tr>
+                                    <th className="py-3 px-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Step / Description</th>
+                                    <th className="py-3 px-4 text-xs font-bold text-gray-500 uppercase tracking-wider w-32">Input</th>
+                                    <th className="py-3 px-4 text-xs font-bold text-gray-500 uppercase tracking-wider w-32 text-right">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200 bg-white">
+                                {results.map((r, i) => (
+                                    <tr key={i} className={r.status.includes("Fail") ? "bg-red-50" : "hover:bg-gray-50"}>
+                                        <td className="py-4 px-4">
+                                            <div className="font-medium text-gray-900"><span className="text-gray-400 mr-2">#{i+1}</span> {r.description}</div>
+                                            {r.note && <div className="text-sm text-red-600 mt-1 font-medium bg-red-100 inline-block px-2 py-0.5 rounded">Note: {r.note}</div>}
+                                        </td>
+                                        <td className="py-4 px-4 font-mono text-gray-700 font-medium">{r.value}</td>
+                                        <td className="py-4 px-4 text-right">
+                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                                                r.status === 'Pass' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                            }`}>
+                                                {r.status}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div className="flex gap-4 print:hidden">
+                        <button onClick={onRestart} className="flex-1 border border-gray-300 text-gray-700 py-3 rounded-lg hover:bg-gray-50 font-medium transition">
+                            Start New Inspection
+                        </button>
+                        <button onClick={handlePrint} className="flex-1 bg-gray-900 text-white py-3 rounded-lg hover:bg-gray-800 font-medium transition flex items-center justify-center gap-2">
+                            <i data-lucide="printer" className="w-4 h-4"></i> Print Report
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // 4. Main App Controller
+    function App() {
+        const [view, setView] = React.useState("start");
+        const [currentStepIndex, setCurrentStepIndex] = React.useState(0);
+        const [metaData, setMetaData] = React.useState({});
+        const [results, setResults] = React.useState([]);
+
+        const handleStart = (data) => {
+            setMetaData(data);
+            setView("step");
+            setCurrentStepIndex(0);
+            setResults([]);
+        };
+
+        const handleStepSubmit = (stepResult) => {
+            const newResults = [...results, stepResult];
+            setResults(newResults);
+
+            if (currentStepIndex < stepsData.length - 1) {
+                setCurrentStepIndex(currentStepIndex + 1);
+            } else {
+                setView("report");
+            }
+        };
+
+        const handleBack = () => {
+            if (currentStepIndex > 0) {
+                setResults(results.slice(0, -1));
+                setCurrentStepIndex(currentStepIndex - 1);
+            }
+        };
+
+        const handleRestart = () => {
+            setView("start");
+            setMetaData({});
+            setResults([]);
+            setCurrentStepIndex(0);
+        };
+
+        React.useEffect(() => {
+            if (window.lucide) {
+                window.lucide.createIcons();
+            }
+        }, [view, currentStepIndex]);
+
+        // Remove padding from main container for full-screen step view
+        return (
+            <div className={view === 'step' ? '' : 'min-h-screen'}>
+                {view === "start" && <StartScreen onStart={handleStart} />}
+                
+                {view === "step" && (
+                    <StepScreen 
+                        stepData={stepsData[currentStepIndex]} 
+                        stepIndex={currentStepIndex}
+                        totalSteps={stepsData.length}
+                        onNext={handleStepSubmit}
+                        onBack={handleBack}
+                    />
+                )}
+
+                {view === "report" && (
+                    <ReportScreen 
+                        meta={metaData} 
+                        results={results} 
+                        onRestart={handleRestart} 
+                    />
+                )}
+            </div>
+        );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+
+</script>
+</body>
+</html>
