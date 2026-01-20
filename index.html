@@ -4,15 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Dynamic Inspection Tool</title>
-    <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React and ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <!-- Babel for JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    <!-- Icons (Lucide) -->
     <script src="https://unpkg.com/lucide@latest"></script>
 
     <style>
@@ -22,7 +18,6 @@
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        /* Disable text selection for better swipe experience */
         .no-select { user-select: none; -webkit-user-select: none; }
     </style>
 </head>
@@ -33,7 +28,6 @@
 <script type="text/babel">
 
     // --- DATA CONFIGURATION ---
-    // Updated extensions to .png to match your GitHub upload plan
     const stepsData = [
         {
             id: 1,
@@ -70,12 +64,24 @@
             max: 25,
             unit: "V",
             imageUrl: "Step 5.png"
+        },
+        // --- NEW FILE UPLOAD STEPS ---
+        {
+            id: 6,
+            description: "Take a picture of the serial number label of the machine",
+            inputType: "file",
+            imageUrl: "Step 6.png" // Placeholder
+        },
+        {
+            id: 7,
+            description: "Take a picture of your shop paperwork",
+            inputType: "file",
+            imageUrl: "Step 7.png" // Placeholder
         }
     ];
 
     // --- COMPONENTS ---
 
-    // 1. Start Screen
     function StartScreen({ onStart }) {
         const [meta, setMeta] = React.useState({
             employeeName: "",
@@ -145,41 +151,43 @@
         );
     }
 
-    // 2. Dynamic Step Screen (Flexbox Layout Redesign)
     function StepScreen({ stepData, stepIndex, totalSteps, onNext, onBack }) {
         const [value, setValue] = React.useState("");
         const [failureNote, setFailureNote] = React.useState("");
         const [error, setError] = React.useState("");
         const [touchStart, setTouchStart] = React.useState(null);
         const [touchEnd, setTouchEnd] = React.useState(null);
+        const fileInputRef = React.useRef(null);
 
-        // Reset state when step changes
         React.useEffect(() => {
             setValue("");
             setFailureNote("");
             setError("");
         }, [stepData]);
 
-        // Re-run icons when error appears
         React.useEffect(() => {
             if (window.lucide) window.lucide.createIcons();
-        }, [error]);
+        }, [error, value]);
+
+        const handleFileChange = (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                // In a sample, we just store the name to show "success"
+                setValue(file.name);
+                setError("");
+            }
+        };
 
         const validateAndProceed = () => {
-            if (stepData.inputType === "numeric") {
-                if (value === "") {
-                    setError("Please enter a value.");
-                    return;
-                }
+            if (stepData.inputType === "numeric" && value === "") {
+                setError("Please enter a value.");
+                return;
             } else if (stepData.inputType === "passfail") {
-                if (value === "") {
-                    setError("Please select Pass or Fail.");
-                    return;
-                }
-                if (value === "Fail" && failureNote.trim() === "") {
-                    setError("Please provide a note for the failure.");
-                    return;
-                }
+                if (value === "") { setError("Please select Pass or Fail."); return; }
+                if (value === "Fail" && failureNote.trim() === "") { setError("Please provide a note for the failure."); return; }
+            } else if (stepData.inputType === "file" && value === "") {
+                setError("Please capture or upload an image.");
+                return;
             }
 
             let resultStatus = "Pass";
@@ -188,6 +196,7 @@
                 const num = parseFloat(value);
                 if (num < stepData.min || num > stepData.max) resultStatus = "Fail (Out of Range)";
             }
+            if (stepData.inputType === "file") resultStatus = "Captured";
 
             onNext({
                 stepId: stepData.id,
@@ -198,73 +207,40 @@
             });
         };
 
-        // --- Swipe Handlers ---
-        const minSwipeDistance = 50; 
-
-        const onTouchStart = (e) => {
-            setTouchEnd(null);
-            setTouchStart(e.targetTouches[0].clientX);
-        };
-
-        const onTouchMove = (e) => {
-            setTouchEnd(e.targetTouches[0].clientX);
-        };
-
+        const onTouchStart = (e) => { setTouchEnd(null); setTouchStart(e.targetTouches[0].clientX); };
+        const onTouchMove = (e) => { setTouchEnd(e.targetTouches[0].clientX); };
         const onTouchEnd = () => {
             if (!touchStart || !touchEnd) return;
             const distance = touchStart - touchEnd;
-            const isLeftSwipe = distance > minSwipeDistance;
-            const isRightSwipe = distance < -minSwipeDistance;
-
-            if (isLeftSwipe) {
-                // Swipe Left -> Next
-                validateAndProceed();
-            } else if (isRightSwipe && stepIndex > 0) {
-                // Swipe Right -> Back
-                onBack();
-            }
+            if (distance > 50) validateAndProceed();
+            else if (distance < -50 && stepIndex > 0) onBack();
         };
 
         return (
-            <div 
-                className="flex flex-col h-screen bg-black overflow-hidden no-select"
-                onTouchStart={onTouchStart}
-                onTouchMove={onTouchMove}
-                onTouchEnd={onTouchEnd}
-            >
-                {/* Image Area - Flexible height, takes all available space above controls */}
+            <div className="flex flex-col h-screen bg-black overflow-hidden no-select" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
                 <div className="flex-1 relative min-h-0 w-full bg-black flex items-center justify-center">
-                    <img 
-                        src={stepData.imageUrl} 
-                        alt={`Slide for step ${stepIndex + 1}`}
-                        className="w-full h-full object-contain"
-                        onError={(e) => {e.target.style.display='none'; e.target.nextSibling.style.display='flex';}}
-                    />
-                     <div className="hidden absolute inset-0 z-0 flex items-center justify-center text-gray-400 bg-gray-900">
+                    <img src={stepData.imageUrl} alt="" className="w-full h-full object-contain" onError={(e) => {e.target.style.display='none'; e.target.nextSibling.style.display='flex';}} />
+                    <div className="hidden absolute inset-0 z-0 flex items-center justify-center text-gray-400 bg-gray-900">
                         <div className="text-center">
                             <i data-lucide="image-off" className="w-16 h-16 mx-auto mb-4"></i>
-                            <p className="text-xl">Image not found: {stepData.imageUrl}</p>
+                            <p className="text-xl">Instructional Visual</p>
                         </div>
                     </div>
 
-                    {/* Navigation Arrows - Center Vertically in Image Area */}
                     {stepIndex > 0 && (
-                        <button onClick={onBack} className="absolute left-4 top-1/2 transform -translate-y-1/2 z-20 bg-black/50 text-white p-3 rounded-full hover:bg-black/70 transition border border-white/20">
+                        <button onClick={onBack} className="absolute left-4 top-1/2 transform -translate-y-1/2 z-20 bg-black/50 text-white p-3 rounded-full border border-white/20">
                             <i data-lucide="chevron-left" className="w-8 h-8"></i>
                         </button>
                     )}
-                    <button onClick={validateAndProceed} className="absolute right-4 top-1/2 transform -translate-y-1/2 z-20 bg-black/50 text-white p-3 rounded-full hover:bg-black/70 transition border border-white/20">
+                    <button onClick={validateAndProceed} className="absolute right-4 top-1/2 transform -translate-y-1/2 z-20 bg-black/50 text-white p-3 rounded-full border border-white/20">
                         <i data-lucide="chevron-right" className="w-8 h-8"></i>
                     </button>
                 </div>
 
-                {/* Bottom Controls - Fixed at bottom, solid background */}
                 <div className="bg-white p-6 rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.5)] z-30 shrink-0 w-full relative">
                     <div className="w-full max-w-2xl mx-auto">
                         <div className="flex justify-between items-center mb-4">
-                            <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">
-                                Step {stepIndex + 1} of {totalSteps}
-                            </span>
+                            <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">Step {stepIndex + 1} of {totalSteps}</span>
                         </div>
                         <h2 className="text-2xl font-bold text-gray-900 mb-6">{stepData.description}</h2>
                         
@@ -272,29 +248,13 @@
                             {stepData.inputType === "passfail" && (
                                 <div className="space-y-4">
                                     <div className="flex gap-4">
-                                        <button 
-                                            onClick={() => {setValue("Pass"); setError("");}}
-                                            className={`flex-1 py-4 rounded-xl font-bold border-2 transition text-lg ${value === "Pass" ? "bg-green-100 border-green-500 text-green-700 shadow-sm" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
-                                        >
-                                            PASS
-                                        </button>
-                                        <button 
-                                            onClick={() => {setValue("Fail"); setError("");}}
-                                            className={`flex-1 py-4 rounded-xl font-bold border-2 transition text-lg ${value === "Fail" ? "bg-red-100 border-red-500 text-red-700 shadow-sm" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
-                                        >
-                                            FAIL
-                                        </button>
+                                        <button onClick={() => {setValue("Pass"); setError("");}} className={`flex-1 py-4 rounded-xl font-bold border-2 transition text-lg ${value === "Pass" ? "bg-green-100 border-green-500 text-green-700 shadow-sm" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>PASS</button>
+                                        <button onClick={() => {setValue("Fail"); setError("");}} className={`flex-1 py-4 rounded-xl font-bold border-2 transition text-lg ${value === "Fail" ? "bg-red-100 border-red-500 text-red-700 shadow-sm" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>FAIL</button>
                                     </div>
                                     {value === "Fail" && (
                                         <div className="slide-enter bg-red-50 p-3 rounded-xl border border-red-100">
                                             <label className="block text-sm font-medium text-red-800 mb-1">Failure Note (Required)</label>
-                                            <textarea 
-                                                className="w-full p-3 border border-red-300 rounded-lg focus:ring-red-500 focus:border-red-500 text-base"
-                                                rows="2"
-                                                placeholder="Describe the defect..."
-                                                value={failureNote}
-                                                onChange={(e) => setFailureNote(e.target.value)}
-                                            ></textarea>
+                                            <textarea className="w-full p-3 border border-red-300 rounded-lg focus:ring-red-500 focus:border-red-500 text-base" rows="2" placeholder="Describe the defect..." value={failureNote} onChange={(e) => setFailureNote(e.target.value)}></textarea>
                                         </div>
                                     )}
                                 </div>
@@ -303,19 +263,36 @@
                             {stepData.inputType === "numeric" && (
                                 <div>
                                     <div className="flex items-center justify-center mb-4">
-                                        <input 
-                                            type="number" 
-                                            className="block w-48 p-3 border-2 border-gray-300 rounded-xl text-4xl font-mono font-bold text-center focus:ring-blue-500 focus:border-blue-500"
-                                            placeholder="0.00"
-                                            value={value}
-                                            onChange={(e) => {setValue(e.target.value); setError("");}}
-                                        />
+                                        <input type="number" className="block w-48 p-3 border-2 border-gray-300 rounded-xl text-4xl font-mono font-bold text-center focus:ring-blue-500 focus:border-blue-500" placeholder="0.00" value={value} onChange={(e) => {setValue(e.target.value); setError("");}} />
                                         <span className="ml-4 text-3xl text-gray-500 font-bold">{stepData.unit}</span>
                                     </div>
                                     <div className="flex justify-center gap-4 text-sm text-gray-600">
                                         <span className="bg-gray-100 px-3 py-1 rounded-full border">Min: <span className="font-mono font-bold">{stepData.min}</span></span>
                                         <span className="bg-gray-100 px-3 py-1 rounded-full border">Max: <span className="font-mono font-bold">{stepData.max}</span></span>
                                     </div>
+                                </div>
+                            )}
+
+                            {stepData.inputType === "file" && (
+                                <div className="flex flex-col items-center justify-center py-4">
+                                    <input 
+                                        type="file" 
+                                        ref={fileInputRef} 
+                                        className="hidden" 
+                                        accept="image/*" 
+                                        capture="environment" 
+                                        onChange={handleFileChange}
+                                    />
+                                    <button 
+                                        onClick={() => fileInputRef.current.click()}
+                                        className={`w-full max-w-xs flex flex-col items-center justify-center p-8 rounded-2xl border-2 border-dashed transition ${value ? 'bg-blue-50 border-blue-400' : 'bg-gray-50 border-gray-300 hover:bg-gray-100'}`}
+                                    >
+                                        <i data-lucide={value ? "check-circle" : "camera"} className={`w-12 h-12 mb-2 ${value ? 'text-blue-600' : 'text-gray-400'}`}></i>
+                                        <span className={`font-bold ${value ? 'text-blue-700' : 'text-gray-600'}`}>
+                                            {value ? "Photo Captured" : "Take Photo / Upload"}
+                                        </span>
+                                        {value && <span className="text-xs text-blue-500 mt-1 truncate max-w-full px-2">{value}</span>}
+                                    </button>
                                 </div>
                             )}
                             
@@ -332,17 +309,9 @@
         );
     }
 
-    // 3. Report Screen
     function ReportScreen({ meta, results, onRestart }) {
-        const handlePrint = () => {
-            window.print();
-        };
-
-        // Render icons on mount
-        React.useEffect(() => {
-            if (window.lucide) window.lucide.createIcons();
-        }, []);
-
+        const handlePrint = () => window.print();
+        React.useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, []);
         const failedItems = results.filter(r => r.status.includes("Fail"));
 
         return (
@@ -360,7 +329,6 @@
                         </div>
                     </div>
 
-                    {/* Metadata Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 bg-gray-50 p-4 rounded-lg border border-gray-200">
                         <div>
                             <span className="block text-xs uppercase text-gray-500 tracking-wider font-semibold">Employee</span>
@@ -376,7 +344,6 @@
                         </div>
                     </div>
 
-                    {/* Results Table */}
                     <div className="overflow-hidden rounded-lg border border-gray-200 mb-8">
                         <table className="w-full text-left border-collapse">
                             <thead className="bg-gray-50">
@@ -393,10 +360,10 @@
                                             <div className="font-medium text-gray-900"><span className="text-gray-400 mr-2">#{i+1}</span> {r.description}</div>
                                             {r.note && <div className="text-sm text-red-600 mt-1 font-medium bg-red-100 inline-block px-2 py-0.5 rounded">Note: {r.note}</div>}
                                         </td>
-                                        <td className="py-4 px-4 font-mono text-gray-700 font-medium">{r.value}</td>
+                                        <td className="py-4 px-4 font-mono text-gray-700 font-medium truncate max-w-[150px]">{r.value}</td>
                                         <td className="py-4 px-4 text-right">
                                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                                                r.status === 'Pass' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                                r.status === 'Pass' || r.status === 'Captured' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                                             }`}>
                                                 {r.status}
                                             </span>
@@ -408,9 +375,7 @@
                     </div>
 
                     <div className="flex gap-4 print:hidden">
-                        <button onClick={onRestart} className="flex-1 border border-gray-300 text-gray-700 py-3 rounded-lg hover:bg-gray-50 font-medium transition">
-                            Start New Inspection
-                        </button>
+                        <button onClick={onRestart} className="flex-1 border border-gray-300 text-gray-700 py-3 rounded-lg hover:bg-gray-50 font-medium transition">Start New Inspection</button>
                         <button onClick={handlePrint} className="flex-1 bg-gray-900 text-white py-3 rounded-lg hover:bg-gray-800 font-medium transition flex items-center justify-center gap-2">
                             <i data-lucide="printer" className="w-4 h-4"></i> Print Report
                         </button>
@@ -420,73 +385,29 @@
         );
     }
 
-    // 4. Main App Controller
     function App() {
         const [view, setView] = React.useState("start");
         const [currentStepIndex, setCurrentStepIndex] = React.useState(0);
         const [metaData, setMetaData] = React.useState({});
         const [results, setResults] = React.useState([]);
 
-        const handleStart = (data) => {
-            setMetaData(data);
-            setView("step");
-            setCurrentStepIndex(0);
-            setResults([]);
-        };
-
+        const handleStart = (data) => { setMetaData(data); setView("step"); setCurrentStepIndex(0); setResults([]); };
         const handleStepSubmit = (stepResult) => {
             const newResults = [...results, stepResult];
             setResults(newResults);
-
-            if (currentStepIndex < stepsData.length - 1) {
-                setCurrentStepIndex(currentStepIndex + 1);
-            } else {
-                setView("report");
-            }
+            if (currentStepIndex < stepsData.length - 1) setCurrentStepIndex(currentStepIndex + 1);
+            else setView("report");
         };
+        const handleBack = () => { if (currentStepIndex > 0) { setResults(results.slice(0, -1)); setCurrentStepIndex(currentStepIndex - 1); } };
+        const handleRestart = () => { setView("start"); setMetaData({}); setResults([]); setCurrentStepIndex(0); };
 
-        const handleBack = () => {
-            if (currentStepIndex > 0) {
-                setResults(results.slice(0, -1));
-                setCurrentStepIndex(currentStepIndex - 1);
-            }
-        };
+        React.useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [view, currentStepIndex]);
 
-        const handleRestart = () => {
-            setView("start");
-            setMetaData({});
-            setResults([]);
-            setCurrentStepIndex(0);
-        };
-
-        React.useEffect(() => {
-            if (window.lucide) {
-                window.lucide.createIcons();
-            }
-        }, [view, currentStepIndex]);
-
-        // Remove padding from main container for full-screen step view
         return (
             <div className={view === 'step' ? '' : 'min-h-screen'}>
                 {view === "start" && <StartScreen onStart={handleStart} />}
-                
-                {view === "step" && (
-                    <StepScreen 
-                        stepData={stepsData[currentStepIndex]} 
-                        stepIndex={currentStepIndex}
-                        totalSteps={stepsData.length}
-                        onNext={handleStepSubmit}
-                        onBack={handleBack}
-                    />
-                )}
-
-                {view === "report" && (
-                    <ReportScreen 
-                        meta={metaData} 
-                        results={results} 
-                        onRestart={handleRestart} 
-                    />
-                )}
+                {view === "step" && <StepScreen stepData={stepsData[currentStepIndex]} stepIndex={currentStepIndex} totalSteps={stepsData.length} onNext={handleStepSubmit} onBack={handleBack} />}
+                {view === "report" && <ReportScreen meta={metaData} results={results} onRestart={handleRestart} />}
             </div>
         );
     }
